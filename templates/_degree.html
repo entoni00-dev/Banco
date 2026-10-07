@@ -1,0 +1,16 @@
+{# Menu a tendina dei corsi Federico II. Variabile in ingresso: current (corso attuale o vuoto). #}
+{% set in_list = current in ALL_COURSES %}
+<label class="wide">Corso di laurea
+<select name="degree" id="degree-select" required onchange="document.getElementById('degree-other-wrap').style.display = this.value === '__altro__' ? 'block' : 'none'">
+  <option value="" {% if not current %}selected{% endif %} disabled>Scegli il tuo corso…</option>
+  {% for school, labels in COURSE_GROUPS %}
+  <optgroup label="Scuola di {{ school }}">
+    {% for l in labels %}<option {% if l == current %}selected{% endif %}>{{ l }}</option>{% endfor %}
+  </optgroup>
+  {% endfor %}
+  <optgroup label="Non lo trovi?">
+    <option value="__altro__" {% if current and not in_list %}selected{% endif %}>Altro (scrivilo tu)</option>
+  </optgroup>
+</select></label>
+<label class="wide" id="degree-other-wrap" style="display:{% if current and not in_list %}block{% else %}none{% endif %}">Nome del corso
+<input name="degree_other" maxlength="120" placeholder="es. Ingegneria Matematica" value="{% if current and not in_list %}{{ current }}{% endif %}"></label>

@@ -1,11 +1,12 @@
 {% extends "base.html" %}{% block title %}Registrati · Banco{% endblock %}{% block content %}
 <div class="form-wrap"><p class="eyebrow">CREA IL TUO PROFILO</p><h1>Entra in aula.</h1>
+<p class="meta">Hai già un account? <a href="{{ url_for('login') }}">Accedi</a></p>
 <form method="post" class="form-grid"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
 <label>Nome<input name="name" required maxlength="60" placeholder="Antonio" value="{{ form.get('name','') }}"></label>
-<label>Email istituzionale<input type="email" name="email" required placeholder="nome@{{ domain }}" value="{{ form.get('email','') }}" autocomplete="email"></label>
-<label>Corso di laurea<input name="degree" required maxlength="120" placeholder="Ingegneria Informatica" value="{{ form.get('degree','') }}"></label>
+<label>{% if any_email %}Email{% else %}Email istituzionale{% endif %}<input type="email" name="email" required placeholder="{% if any_email %}nome@esempio.it{% else %}nome@{{ domain }}{% endif %}" value="{{ form.get('email','') }}" autocomplete="email"></label>
+{% with current = (form.get('degree_other') if form.get('degree') == '__altro__' else form.get('degree','')) %}{% include "_degree.html" %}{% endwith %}
 <label>Anno<input type="number" min="1" max="6" name="year" required value="{{ form.get('year','1') }}"></label>
 <label class="wide">Bio <small>max 150 caratteri</small><textarea name="bio" maxlength="150" placeholder="Come studi, cosa stai preparando...">{{ form.get('bio','') }}</textarea></label>
 <label class="wide">Contatto da sbloccare dopo il match<input name="contact" maxlength="160" placeholder="@telegram, Instagram o email" value="{{ form.get('contact','') }}"></label>
-<label class="wide">Password<input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
+<label class="wide">Password <small>almeno 6 caratteri, ti servirà per accedere</small><input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
 <button class="btn primary wide">Crea account →</button></form></div>{% endblock %}

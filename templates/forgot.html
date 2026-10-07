@@ -1,0 +1,6 @@
+{% extends "base.html" %}{% block title %}Password dimenticata · Banco{% endblock %}{% block content %}<div class="form-wrap narrow"><p class="eyebrow">RECUPERO PASSWORD</p><h1>Nessun problema.</h1>
+<p class="lead small">Scrivi l'email con cui ti sei registrato: ti mandiamo un link per sceglierne una nuova. Vale un'ora.</p>
+<form method="post" class="form-grid"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<label class="wide">Email<input type="email" name="email" required autocomplete="email"></label>
+<button class="btn primary wide">Mandami il link →</button></form>
+<p class="meta"><a href="{{ url_for('login') }}">← Torna all'accesso</a></p></div>{% endblock %}

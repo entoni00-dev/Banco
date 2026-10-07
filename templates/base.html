@@ -20,7 +20,7 @@
       <a href="{{ url_for('profile') }}">Profilo</a>
       <a class="nav-cta" href="{{ url_for('new_request') }}">+ Pubblica</a>
     {% else %}
-      <a href="{{ url_for('login') }}">Accedi</a><a class="nav-cta" href="{{ url_for('register') }}">Inizia</a>
+      <a class="nav-login" href="{{ url_for('login') }}">Accedi</a><a class="nav-cta" href="{{ url_for('register') }}">Registrati</a>
     {% endif %}
   </nav>
 </header>

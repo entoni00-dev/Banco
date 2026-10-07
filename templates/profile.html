@@ -3,7 +3,7 @@
 <form method="post" class="form-grid"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
 <label>Nome<input name="name" required maxlength="60" value="{{ me.name }}"></label>
 <label>Anno<input type="number" min="1" max="6" name="year" required value="{{ me.year }}"></label>
-<label class="wide">Corso di laurea<input name="degree" required maxlength="120" value="{{ me.degree }}"></label>
+{% with current = me.degree %}{% include "_degree.html" %}{% endwith %}
 <label class="wide">Bio <small>max 150 caratteri</small><textarea name="bio" maxlength="150">{{ me.bio or '' }}</textarea></label>
 <label class="wide">Contatto da sbloccare dopo il match<input name="contact" maxlength="160" value="{{ me.contact or '' }}" placeholder="@telegram, Instagram o email"></label>
 <label class="wide">Nuova password <small>lascia vuoto per non cambiarla</small><input type="password" name="new_password" minlength="6" autocomplete="new-password"></label>
