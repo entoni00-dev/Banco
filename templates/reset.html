@@ -1,0 +1,5 @@
+{% extends "base.html" %}{% block title %}Nuova password · Banco{% endblock %}{% block content %}<div class="form-wrap narrow"><p class="eyebrow">NUOVA PASSWORD</p><h1>Ciao {{ name }}.</h1>
+<form method="post" class="form-grid"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<label class="wide">Nuova password<input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
+<label class="wide">Ripetila<input type="password" name="password2" minlength="6" required autocomplete="new-password"></label>
+<button class="btn primary wide">Salva e accedi →</button></form></div>{% endblock %}

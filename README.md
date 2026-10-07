@@ -3,7 +3,10 @@
 Web app per trovare compagni di studio alla Federico II.
 
 ## Cosa fa
-- Registrazione solo con email `@studenti.unina.it`, login, modifica profilo e password
+- Registrazione con email `@studenti.unina.it` (o qualsiasi email con `ALLOWED_EMAIL_DOMAIN=*`), login che resta attivo 30 giorni
+- Corso di laurea scelto dall'elenco ufficiale Federico II (file `courses.py`, raggruppato per Scuola), con opzione "Altro"
+- Password dimenticata: link via email valido 1 ora e usabile una sola volta
+- Email di avviso quando qualcuno ti chiede di studiare insieme e quando accetta
 - Pubblicazione richieste di studio (materia, giorni, fascia, modalità, luogo, nota)
 - Bacheca filtrabile per materia, modalità e orario
 - Richiesta di contatto → l'altro accetta o rifiuta → il contatto si sblocca solo dopo l'accettazione
@@ -20,9 +23,9 @@ cd ~/Desktop/banco
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-python app.py
+python -m flask --app app run --port 5001 --debug
 ```
-Apri http://127.0.0.1:5000 (in locale usa SQLite, file `instance/banco.db`).
+Apri http://127.0.0.1:5001 (su Mac la porta 5000 è occupata da AirPlay) (in locale usa SQLite, file `instance/banco.db`).
 
 ---
 
@@ -64,6 +67,11 @@ Apri http://127.0.0.1:5000 (in locale usa SQLite, file `instance/banco.db`).
    | `SECRET_KEY` | clicca **Generate** (o una frase lunga e casuale) |
    | `PYTHON_VERSION` | `3.12.8` |
    | `DEMO_MODE` | `1` (demo attiva) oppure `0` |
+   | `ALLOWED_EMAIL_DOMAIN` | *(facoltativa)* vuota = solo studenti.unina.it · `*` = qualsiasi email |
+   | `BREVO_API_KEY` | *(facoltativa)* chiave API di Brevo per inviare le email |
+   | `MAIL_FROM` | *(facoltativa)* mittente verificato su Brevo, es. `noreply@tuodominio.it` |
+
+   Senza `BREVO_API_KEY` le email non partono: il loro contenuto (link di recupero compreso) compare in **Render → Logs**.
 4. **Deploy Web Service**. Dopo 2-3 minuti in alto trovi il link `https://banco-xxxx.onrender.com`: è quello da mostrare.
 
 ### Aggiornare l'app

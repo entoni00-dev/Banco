@@ -3,16 +3,21 @@
 Funziona in locale con SQLite e online con Postgres (es. Neon) tramite la
 variabile d'ambiente DATABASE_URL.
 """
+import json
 import os
 import secrets
-from datetime import datetime
+import urllib.request
+from datetime import datetime, timedelta
 from functools import wraps
 
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    session, url_for)
 from flask_sqlalchemy import SQLAlchemy
+from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
+
+from courses import ALL_LABELS, grouped_labels
 
 # ---------------------------------------------------------------- config
 app = Flask(__name__)
@@ -20,6 +25,12 @@ app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
 
 IS_PROD = bool(os.environ.get("RENDER") or os.environ.get("DATABASE_URL"))
 DEMO_MODE = os.environ.get("DEMO_MODE", "1") == "1"
+# "*" = qualsiasi email; vuoto = solo il dominio dell'ateneo attivo (studenti.unina.it)
+ALLOWED_EMAIL_DOMAIN = os.environ.get("ALLOWED_EMAIL_DOMAIN", "").strip().lower()
+# Email (Brevo, via API HTTPS: Render gratuito blocca l'SMTP). Senza chiave i link finiscono nei log.
+BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip()
+MAIL_FROM = os.environ.get("MAIL_FROM", "").strip()
+MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Banco")
 
 
 def _database_url():
@@ -43,6 +54,7 @@ app.config.update(
     SESSION_COOKIE_HTTPONLY=True,
     SESSION_COOKIE_SAMESITE="Lax",
     SESSION_COOKIE_SECURE=IS_PROD,
+    PERMANENT_SESSION_LIFETIME=timedelta(days=30),   # resti dentro 30 giorni
 )
 db = SQLAlchemy(app)
 
@@ -116,6 +128,12 @@ def current_user():
     return user
 
 
+def log_in(user):
+    session.clear()
+    session.permanent = True
+    session["user_id"] = user.id
+
+
 def login_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
@@ -149,7 +167,71 @@ def inject_globals():
         pending = ContactRequest.query.filter_by(receiver_id=me.id, status="pending").count()
     return {"me": me, "csrf_token": csrf_token, "pending_count": pending,
             "STATUS_LABELS": STATUS_LABELS, "DEMO_MODE": DEMO_MODE,
-            "DAYS": DAYS, "SLOTS": SLOTS, "MODES": MODES}
+            "DAYS": DAYS, "SLOTS": SLOTS, "MODES": MODES,
+            "COURSE_GROUPS": COURSE_GROUPS, "ALL_COURSES": ALL_LABELS}
+
+
+COURSE_GROUPS = grouped_labels()
+OTHER = "__altro__"
+
+
+def parse_degree(current=None):
+    """Corso scelto dal menu; 'Altro' usa il testo libero. Accetta il valore attuale (profili vecchi)."""
+    choice = request.form.get("degree", "").strip()
+    if choice == OTHER:
+        other = clean("degree_other", 120)
+        return other or None
+    if choice in ALL_LABELS or (current and choice == current):
+        return choice
+    return None
+
+
+def email_allowed(email, uni):
+    if ALLOWED_EMAIL_DOMAIN == "*":
+        return "@" in email
+    domain = ALLOWED_EMAIL_DOMAIN or (uni.email_domain if uni else "studenti.unina.it")
+    return email.endswith("@" + domain)
+
+
+def send_email(to, subject, html):
+    """Invia con Brevo. Se non configurato, scrive nei log (visibili su Render → Logs)."""
+    if not (BREVO_API_KEY and MAIL_FROM):
+        app.logger.warning("EMAIL NON INVIATA (Brevo non configurato) a %s | %s | %s", to, subject, html)
+        return False
+    body = json.dumps({"sender": {"email": MAIL_FROM, "name": MAIL_FROM_NAME},
+                       "to": [{"email": to}], "subject": subject, "htmlContent": html}).encode()
+    req = urllib.request.Request("https://api.brevo.com/v3/smtp/email", data=body, method="POST",
+                                 headers={"api-key": BREVO_API_KEY, "content-type": "application/json",
+                                          "accept": "application/json"})
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return 200 <= r.status < 300
+    except Exception as exc:          # l'app non deve rompersi se l'email fallisce
+        app.logger.error("Invio email fallito a %s: %s", to, exc)
+        return False
+
+
+def email_layout(title, text, button_label=None, button_url=None):
+    btn = ""
+    if button_url:
+        btn = ('<p><a href="%s" style="background:#e8b84b;color:#1c241e;padding:12px 18px;'
+               'text-decoration:none;font-weight:600;display:inline-block">%s</a></p>'
+               '<p style="font-size:12px;color:#6d746f">Se il pulsante non funziona copia questo link: %s</p>'
+               % (button_url, button_label, button_url))
+    return ('<div style="font-family:Arial,sans-serif;max-width:520px;color:#17231c">'
+            '<h2 style="color:#1f3b2c">%s</h2><p>%s</p>%s'
+            '<p style="font-size:12px;color:#6d746f">Banco · studia in compagnia</p></div>' % (title, text, btn))
+
+
+def notify(user, subject, text, button_label, endpoint):
+    if user.is_demo:
+        return
+    send_email(user.email, subject, email_layout(subject, text, button_label,
+                                                 url_for(endpoint, _external=True)))
+
+
+def reset_serializer():
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="password-reset")
 
 
 def active_university():
@@ -184,37 +266,41 @@ def health():
 @app.route("/register", methods=["GET", "POST"])
 def register():
     uni = active_university()
-    domain = uni.email_domain if uni else "studenti.unina.it"
+    domain = ALLOWED_EMAIL_DOMAIN if ALLOWED_EMAIL_DOMAIN not in ("", "*") else (
+        uni.email_domain if uni else "studenti.unina.it")
     if request.method == "POST":
         email = clean("email", 160).lower()
         password = request.form.get("password", "")
-        name, degree = clean("name", 60), clean("degree", 120)
+        name, degree = clean("name", 60), parse_degree()
         year = parse_year(request.form.get("year"))
         error = None
-        if not uni or not email.endswith("@" + domain):
+        if not email_allowed(email, uni):
             error = "Per il lancio accettiamo solo email @%s." % domain
         elif User.query.filter_by(email=email).first():
             flash("Questa email è già registrata: accedi.", "error")
             return redirect(url_for("login"))
-        elif not name or not degree:
-            error = "Nome e corso di laurea sono obbligatori."
+        elif not name:
+            error = "Il nome è obbligatorio."
+        elif not degree:
+            error = "Scegli il tuo corso dall'elenco (o \"Altro\" e scrivilo)."
         elif year is None:
             error = "Anno di corso non valido."
         elif len(password) < 6:
             error = "La password deve avere almeno 6 caratteri."
         if error:
             flash(error, "error")
-            return render_template("register.html", domain=domain, form=request.form)
+            return render_template("register.html", domain=domain, form=request.form,
+                                   any_email=ALLOWED_EMAIL_DOMAIN == "*")
         user = User(email=email, password_hash=generate_password_hash(password),
                     name=name, degree=degree, year=year,
                     bio=clean("bio", 150), contact=clean("contact", 160), university=uni)
         db.session.add(user)
         db.session.commit()
-        session.clear()
-        session["user_id"] = user.id
+        log_in(user)
         flash("Benvenuto su Banco, %s." % user.name, "success")
         return redirect(url_for("feed"))
-    return render_template("register.html", domain=domain, form={})
+    return render_template("register.html", domain=domain, form={},
+                           any_email=ALLOWED_EMAIL_DOMAIN == "*")
 
 
 @app.route("/login", methods=["GET", "POST"])
@@ -224,9 +310,8 @@ def login():
         if not user or not check_password_hash(user.password_hash, request.form.get("password", "")):
             flash("Email o password non corretti.", "error")
             return redirect(url_for("login"))
-        session.clear()
-        session["user_id"] = user.id
-        return redirect(url_for("feed"))
+        log_in(user)
+        return redirect(request.args.get("next") or url_for("feed"))
     return render_template("login.html")
 
 
@@ -236,19 +321,74 @@ def logout():
     return redirect(url_for("index"))
 
 
+# ---------------------------------------------------------------- password dimenticata
+RESET_MAX_AGE = 60 * 60  # il link vale 1 ora
+
+
+@app.route("/password/dimenticata", methods=["GET", "POST"])
+def forgot_password():
+    if request.method == "POST":
+        email = clean("email", 160).lower()
+        user = User.query.filter_by(email=email).first()
+        if user and not user.is_demo:
+            # l'impronta della password rende il link usa-e-getta: cambiata la password, non vale più
+            token = reset_serializer().dumps({"u": user.id, "p": user.password_hash[-12:]})
+            link = url_for("reset_password", token=token, _external=True)
+            send_email(user.email, "Reimposta la password di Banco", email_layout(
+                "Reimposta la password",
+                "Ciao %s, hai chiesto di cambiare la password. Il link vale un'ora. "
+                "Se non sei stato tu, ignora questa email." % user.name,
+                "Scegli una nuova password", link))
+        # stessa risposta sempre, così non si scopre quali email sono registrate
+        flash("Se l'email è registrata, ti abbiamo mandato un link per reimpostare la password "
+              "(controlla anche lo spam).", "success")
+        return redirect(url_for("login"))
+    return render_template("forgot.html")
+
+
+@app.route("/password/nuova/<token>", methods=["GET", "POST"])
+def reset_password(token):
+    try:
+        data = reset_serializer().loads(token, max_age=RESET_MAX_AGE)
+    except SignatureExpired:
+        flash("Il link è scaduto: richiedine uno nuovo.", "error")
+        return redirect(url_for("forgot_password"))
+    except BadSignature:
+        flash("Link non valido.", "error")
+        return redirect(url_for("forgot_password"))
+    user = db.session.get(User, data.get("u"))
+    if not user or user.password_hash[-12:] != data.get("p"):
+        flash("Questo link è già stato usato: richiedine uno nuovo.", "error")
+        return redirect(url_for("forgot_password"))
+    if request.method == "POST":
+        pw = request.form.get("password", "")
+        if len(pw) < 6:
+            flash("La password deve avere almeno 6 caratteri.", "error")
+            return redirect(request.path)
+        if pw != request.form.get("password2", ""):
+            flash("Le due password non coincidono.", "error")
+            return redirect(request.path)
+        user.password_hash = generate_password_hash(pw)
+        db.session.commit()
+        log_in(user)
+        flash("Password aggiornata: sei dentro.", "success")
+        return redirect(url_for("feed"))
+    return render_template("reset.html", name=user.name)
+
+
 # ---------------------------------------------------------------- demo
 DEMO_PEOPLE = [
-    ("Giulia", "Ingegneria Informatica", 1, "Analisi Matematica I", "Mar, Gio", "Pomeriggio", "Presenza",
+    ("Giulia", "Ingegneria Informatica · Triennale", 1, "Analisi Matematica I", "Mar, Gio", "Pomeriggio", "Presenza",
      "Biblioteca San Giovanni", "Cerco qualcuno per fare esercizi sugli integrali, ritmo tranquillo."),
-    ("Marco", "Economia Aziendale", 2, "Statistica", "Lun, Mer", "Mattina", "Online",
+    ("Marco", "Economia Aziendale · Triennale", 2, "Statistica", "Lun, Mer", "Mattina", "Online",
      "", "Preparo lo scritto di giugno, confronto sugli esercizi d'esame."),
-    ("Sara", "Giurisprudenza", 3, "Diritto Privato", "Mar, Ven", "Mattina", "Presenza",
+    ("Sara", "Giurisprudenza · Ciclo unico", 3, "Diritto Privato", "Mar, Ven", "Mattina", "Presenza",
      "Via Porta di Massa", "Ripasso a voce: ci facciamo domande a vicenda."),
-    ("Luca", "Ingegneria Gestionale", 1, "Programmazione I", "Gio", "Sera", "Online",
+    ("Luca", "Ingegneria Gestionale · Triennale", 1, "Programmazione I", "Gio", "Sera", "Online",
      "", "Esercizi in C, posso aiutare con i puntatori."),
-    ("Chiara", "Medicina e Chirurgia", 2, "Biochimica", "Lun, Mar, Mer", "Pomeriggio", "Presenza",
+    ("Chiara", "Medicina e Chirurgia · Ciclo unico", 2, "Biochimica", "Lun, Mar, Mer", "Pomeriggio", "Presenza",
      "Policlinico", "Schemi e mappe, cerco 1-2 persone costanti."),
-    ("Davide", "Fisica", 1, "Fisica I", "Sab", "Mattina", "Presenza",
+    ("Davide", "Fisica · Triennale", 1, "Fisica I", "Sab", "Mattina", "Presenza",
      "Monte Sant'Angelo", "Problemi di cinematica e dinamica dal Mazzoldi."),
 ]
 
@@ -279,7 +419,7 @@ def demo_login():
     uni = active_university()
     guest = User(email="ospite-%s@%s" % (secrets.token_hex(4), DEMO_DOMAIN),
                  password_hash=generate_password_hash(secrets.token_hex(16)),
-                 name="Ospite", degree="Ingegneria Informatica", year=1,
+                 name="Ospite", degree="Ingegneria Informatica · Triennale", year=1,
                  bio="Sto provando Banco.", contact="@ospite_demo", university=uni)
     db.session.add(guest)
     db.session.flush()
@@ -294,8 +434,7 @@ def demo_login():
         db.session.add(ContactRequest(sender_id=giulia.id, receiver_id=guest.id,
                                       study_request_id=my_req.id))
     db.session.commit()
-    session.clear()
-    session["user_id"] = guest.id
+    log_in(guest)
     flash("Sei dentro come ospite. I profili che vedi sono esempi dimostrativi.", "success")
     return redirect(url_for("feed"))
 
@@ -404,6 +543,10 @@ def send_contact(req_id):
         flash("Richiesta di contatto inviata a %s." % study.user.name, "success")
     db.session.add(cr)
     db.session.commit()
+    if cr.status == "pending":
+        notify(study.user, "%s vuole studiare %s con te" % (me.name, study.subject),
+               "%s (%s, %s° anno) ha risposto alla tua richiesta su Banco. Accetta per scambiarvi i contatti."
+               % (me.name, me.degree, me.year), "Vedi la richiesta", "contacts")
     return redirect(url_for("feed"))
 
 
@@ -427,6 +570,10 @@ def contact_action(cid, action):
         abort(400)
     cr.status = action
     db.session.commit()
+    if action == "accepted":
+        notify(cr.sender, "%s ha accettato: potete studiare insieme" % me.name,
+               "%s ha accettato la tua richiesta per %s. Trovi il suo contatto su Banco."
+               % (me.name, cr.study_request.subject), "Apri i contatti", "contacts")
     flash("Contatto sbloccato." if action == "accepted" else "Richiesta rifiutata.", "success")
     return redirect(url_for("contacts"))
 
@@ -436,7 +583,7 @@ def contact_action(cid, action):
 def profile():
     me = current_user()
     if request.method == "POST":
-        name, degree = clean("name", 60), clean("degree", 120)
+        name, degree = clean("name", 60), parse_degree(current=me.degree)
         year = parse_year(request.form.get("year"))
         if not name or not degree or year is None:
             flash("Controlla nome, corso e anno.", "error")

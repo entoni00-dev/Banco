@@ -5,7 +5,7 @@
   <div class="actions">
     <a class="btn primary" href="{{ url_for('register') }}">Trova un compagno →</a>
     {% if DEMO_MODE %}<form method="post" action="{{ url_for('demo_login') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btn dark">Prova la demo senza registrarti</button></form>{% endif %}
-    <a class="btn ghost" href="#come">Come funziona</a>
+    <a class="btn ghost" href="{{ url_for('login') }}">Ho già un account · Accedi</a>
   </div></div>
   <aside class="chalk"><span>OGGI SUL BANCO</span><strong>Analisi I</strong><p>Martedì · Pomeriggio</p><hr><strong>Programmazione</strong><p>Giovedì · Sera</p><hr><strong>Fisica I</strong><p>Venerdì · Mattina</p></aside>
 </section>
