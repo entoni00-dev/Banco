@@ -1,0 +1,13 @@
+{% extends "base.html" %}{% block content %}
+<section class="hero">
+  <div><p class="eyebrow">FEDERICO II · NAPOLI</p><h1>Il prossimo esame<br>non prepararlo <em>da solo.</em></h1>
+  <p class="lead">Trova studenti del tuo ateneo che stanno preparando la stessa materia, negli stessi giorni e con il tuo stesso ritmo.</p>
+  <div class="actions">
+    <a class="btn primary" href="{{ url_for('register') }}">Trova un compagno →</a>
+    {% if DEMO_MODE %}<form method="post" action="{{ url_for('demo_login') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btn dark">Prova la demo senza registrarti</button></form>{% endif %}
+    <a class="btn ghost" href="#come">Come funziona</a>
+  </div></div>
+  <aside class="chalk"><span>OGGI SUL BANCO</span><strong>Analisi I</strong><p>Martedì · Pomeriggio</p><hr><strong>Programmazione</strong><p>Giovedì · Sera</p><hr><strong>Fisica I</strong><p>Venerdì · Mattina</p></aside>
+</section>
+<section id="come" class="steps"><div><b>01</b><h3>Pubblica</h3><p>Materia, disponibilità e modalità.</p></div><div><b>02</b><h3>Trova</h3><p>Filtra studenti compatibili.</p></div><div><b>03</b><h3>Connettiti</h3><p>Il contatto si sblocca solo dopo l'accettazione.</p></div></section>
+{% endblock %}

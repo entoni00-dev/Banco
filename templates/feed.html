@@ -1,0 +1,12 @@
+{% extends "base.html" %}{% block title %}Bacheca · Banco{% endblock %}{% block content %}
+<div class="page-head"><div><p class="eyebrow">BACHECA</p><h1>Chi studia cosa?</h1></div><a class="btn primary" href="{{ url_for('new_request') }}">+ Nuova richiesta</a></div>
+<form class="filters"><input name="subject" value="{{ f.subject }}" placeholder="Materia o esame">
+<select name="mode"><option value="">Modalità</option>{% for m in MODES %}<option {% if f.mode==m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select>
+<select name="slot"><option value="">Orario</option>{% for s in SLOTS %}<option {% if f.slot==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select>
+<button class="btn dark">Filtra</button></form>
+{% if f.subject or f.mode or f.slot %}<p class="meta">{{ items|length }} risultati · <a href="{{ url_for('feed') }}">azzera filtri</a></p>{% endif %}
+<div class="register-list">{% for x in items %}
+<article class="row"><div class="avatar">{{ x.user.name[0]|upper }}</div><div class="grow"><div class="row-top"><h2>{{ x.subject }}</h2><span>{{ x.mode }}</span></div><p><strong>{{ x.user.name }}</strong> · {{ x.user.degree }} · {{ x.user.year }}° anno</p><p class="meta">{{ x.days }} · {{ x.time_slot }}{% if x.place %} · {{ x.place }}{% endif %}</p>{% if x.note %}<p class="note">“{{ x.note }}”</p>{% endif %}</div>
+{% if x.id in sent %}<span class="pill {{ sent[x.id] }}">{{ STATUS_LABELS[sent[x.id]] }}</span>
+{% else %}<form method="post" action="{{ url_for('send_contact', req_id=x.id) }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button class="btn outline">Contatta</button></form>{% endif %}</article>
+{% else %}<div class="empty">Nessuna richiesta corrisponde ai filtri. <a href="{{ url_for('new_request') }}">Pubblicane una tu.</a></div>{% endfor %}</div>{% endblock %}

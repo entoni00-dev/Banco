@@ -1,0 +1,10 @@
+{% extends "base.html" %}{% block title %}Profilo · Banco{% endblock %}{% block content %}<div class="profile"><div class="big-avatar">{{me.name[0]|upper}}</div><div class="grow"><p class="eyebrow">{{me.university.name}}</p><h1>{{me.name}}</h1><p>{{me.degree}} · {{me.year}}° anno</p><p class="lead small">{{me.bio or "Nessuna bio ancora."}}</p><p class="meta">{{me.email}}</p><a class="btn ghost" href="{{url_for('logout')}}">Esci</a></div></div>
+<h3 class="section-title">Modifica profilo</h3>
+<form method="post" class="form-grid"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<label>Nome<input name="name" required maxlength="60" value="{{ me.name }}"></label>
+<label>Anno<input type="number" min="1" max="6" name="year" required value="{{ me.year }}"></label>
+<label class="wide">Corso di laurea<input name="degree" required maxlength="120" value="{{ me.degree }}"></label>
+<label class="wide">Bio <small>max 150 caratteri</small><textarea name="bio" maxlength="150">{{ me.bio or '' }}</textarea></label>
+<label class="wide">Contatto da sbloccare dopo il match<input name="contact" maxlength="160" value="{{ me.contact or '' }}" placeholder="@telegram, Instagram o email"></label>
+<label class="wide">Nuova password <small>lascia vuoto per non cambiarla</small><input type="password" name="new_password" minlength="6" autocomplete="new-password"></label>
+<button class="btn primary wide">Salva modifiche</button></form>{% endblock %}

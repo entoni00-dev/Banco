@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Nuova richiesta · Banco{% endblock %}{% block content %}<div class="form-wrap"><p class="eyebrow">NUOVA RICHIESTA</p><h1>Cosa prepariamo?</h1><form method="post" class="form-grid"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<label class="wide">Materia / esame<input name="subject" required maxlength="120" placeholder="es. Analisi Matematica I" value="{{ form.get('subject','') }}"></label>
+<fieldset class="wide"><legend>Giorni disponibili</legend><div class="checks">{% for d in DAYS %}<label><input type="checkbox" name="days" value="{{d}}" {% if d in sel_days %}checked{% endif %}>{{d}}</label>{% endfor %}</div></fieldset>
+<label>Fascia<select name="time_slot">{% for s in SLOTS %}<option {% if form.get('time_slot')==s %}selected{% endif %}>{{ s }}</option>{% endfor %}</select></label>
+<label>Modalità<select name="mode">{% for m in MODES %}<option {% if form.get('mode')==m %}selected{% endif %}>{{ m }}</option>{% endfor %}</select></label>
+<label class="wide">Zona / biblioteca<input name="place" maxlength="120" placeholder="San Giovanni, MSA, Biblioteca..." value="{{ form.get('place','') }}"></label>
+<label class="wide">Nota<textarea name="note" maxlength="220" placeholder="Cerco qualcuno per ripasso da zero / esercizi / confronto...">{{ form.get('note','') }}</textarea></label>
+<button class="btn primary wide">Pubblica sulla bacheca →</button></form></div>{% endblock %}
