@@ -1,0 +1,67 @@
+{% extends "base.html" %}{% block title %}Informativa privacy · Banco{% endblock %}{% block content %}
+<article class="legal">
+<p class="eyebrow">INFORMATIVA PRIVACY</p>
+<h1>I tuoi dati su Banco.</h1>
+<p class="meta">Ultimo aggiornamento: 8 ottobre 2026 · Informativa ai sensi degli artt. 13-14 del Regolamento UE 2016/679 (GDPR)</p>
+
+<p>Banco è un progetto indipendente creato da uno studente per aiutare gli studenti universitari a trovare compagni di studio.
+<strong>Non è affiliato né collegato all'Università degli Studi di Napoli Federico II</strong>: usiamo solo l'elenco pubblico dei corsi e chiediamo l'email istituzionale per sapere che sei uno studente.</p>
+
+<h2>Chi è il titolare</h2>
+<p>Il titolare del trattamento è <strong>Antonio Carotenuto</strong>, che gestisce Banco a titolo personale.
+{% if CONTACT_EMAIL %}Per qualsiasi domanda o richiesta sui tuoi dati scrivi a <a href="mailto:{{ CONTACT_EMAIL }}">{{ CONTACT_EMAIL }}</a>.{% endif %}</p>
+
+<h2>Quali dati raccogliamo</h2>
+<ul>
+<li><strong>Quelli che inserisci tu</strong>: email istituzionale, nome, corso di laurea, anno, bio (facoltativa), il contatto che vuoi condividere dopo un match (es. Telegram o Instagram, facoltativo) e la password, che salviamo solo in forma cifrata (non possiamo leggerla).</li>
+<li><strong>Le richieste di studio</strong> che pubblichi (materia, giorni, fascia oraria, modalità, luogo, nota) e le richieste di contatto che invii, ricevi, accetti o rifiuti.</li>
+<li><strong>Dati tecnici</strong>: data di registrazione, se hai confermato l'email, e i tentativi di accesso e di recupero password con l'indirizzo IP da cui arrivano, che usiamo solo per bloccare chi prova a indovinare le password. I server registrano inoltre, come ogni sito, indirizzo IP e pagine richieste.</li>
+</ul>
+<p>Non raccogliamo dati di pagamento, non tracciamo la tua posizione e non usiamo strumenti di pubblicità o di profilazione.</p>
+
+<h2>Perché li usiamo</h2>
+<ul>
+<li>Per farti funzionare il servizio che chiedi registrandoti: mostrare le tue richieste, farti trovare compagni di studio, sbloccare i contatti dopo un'accettazione, mandarti le email di conferma, di recupero password e di avviso (art. 6.1.b GDPR, esecuzione del servizio).</li>
+<li>Per la sicurezza del sito e degli utenti: limiti ai tentativi di accesso, verifica dell'email, prevenzione degli abusi (art. 6.1.f GDPR, legittimo interesse).</li>
+</ul>
+<p>Non vendiamo i tuoi dati e non li usiamo per pubblicità.</p>
+
+<h2>Chi vede cosa</h2>
+<table>
+<tr><th>Chi</th><th>Cosa vede</th></tr>
+<tr><td>Gli altri studenti registrati</td><td>Nome, corso, anno e le richieste di studio che pubblichi. Bio quando gli mandi una richiesta di contatto.</td></tr>
+<tr><td>Solo chi accetta o viene accettato da te</td><td>Il contatto che hai scelto di condividere. Se lo lasci vuoto, la tua email.</td></tr>
+<tr><td>Nessun altro utente</td><td>La tua email (salvo il caso sopra) e la password.</td></tr>
+</table>
+
+<h2>Dove stanno i dati</h2>
+<p>Per far funzionare Banco usiamo questi fornitori, che trattano i dati per nostro conto:</p>
+<ul>
+<li><strong>Render</strong> (Render Services, Inc., USA): ospita il sito, su server nella regione di Francoforte (Germania).</li>
+<li><strong>Neon</strong> (Neon, Inc., USA): ospita il database, su server nella regione di Francoforte (Germania).</li>
+<li><strong>Brevo</strong> (Sendinblue SAS, Francia): invia le email del servizio.</li>
+<li><strong>Google Fonts</strong> (Google LLC, USA): fornisce i caratteri del sito; il tuo browser li scarica dai server di Google, che ricevono così il tuo indirizzo IP.</li>
+</ul>
+<p>Alcuni di questi fornitori hanno sede negli Stati Uniti: gli eventuali trasferimenti di dati fuori dall'UE avvengono con le garanzie previste dai loro termini sul trattamento dei dati (ad esempio clausole contrattuali standard della Commissione europea o EU-US Data Privacy Framework).</p>
+
+<h2>Per quanto tempo li teniamo</h2>
+<ul>
+<li>I dati del profilo, le richieste e i contatti: finché il tuo account esiste. Puoi cancellare in ogni momento le singole richieste di studio da "Le mie richieste".</li>
+<li>Quando chiedi la cancellazione dell'account, rimuoviamo profilo, richieste e contatti entro 30 giorni (di solito molto prima); le copie di sicurezza del database si sovrascrivono da sole nei giorni successivi.</li>
+<li>I tentativi di accesso e di recupero password: circa 24 ore.</li>
+<li>I registri tecnici dei fornitori (server, invio email): per il periodo previsto dai loro termini.</li>
+</ul>
+
+<h2>Cookie</h2>
+<p>Usiamo un solo cookie tecnico, necessario per tenerti collegato (fino a 30 giorni) e proteggere i moduli del sito. Non usiamo cookie di profilazione, di statistica o pubblicitari, per questo non ti chiediamo il consenso con un banner.</p>
+
+<h2>I tuoi diritti</h2>
+<p>Puoi chiedere in qualsiasi momento di accedere ai tuoi dati, correggerli, cancellarli, riceverne una copia, limitarne o opporti al loro trattamento (artt. 15-22 GDPR).
+Nome, corso, anno, bio, contatto e password li modifichi da solo dalla pagina Profilo.
+{% if CONTACT_EMAIL %}Per tutto il resto, compresa la <strong>cancellazione dell'account</strong>, scrivi a <a href="mailto:{{ CONTACT_EMAIL }}?subject=Richiesta%20privacy%20Banco">{{ CONTACT_EMAIL }}</a> dall'indirizzo con cui sei registrato: rispondiamo entro 30 giorni.{% endif %}
+Se ritieni che i tuoi dati siano trattati in modo non corretto puoi anche presentare reclamo al <a href="https://www.garanteprivacy.it" rel="noopener">Garante per la protezione dei dati personali</a>.</p>
+
+<h2>Modifiche</h2>
+<p>Se cambiamo questa informativa aggiorniamo la data in alto; se le modifiche sono importanti te lo diciamo via email.</p>
+</article>
+{% endblock %}

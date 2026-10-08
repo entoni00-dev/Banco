@@ -9,4 +9,5 @@
 <label class="wide">Bio <small>max 150 caratteri</small><textarea name="bio" maxlength="150" placeholder="Come studi, cosa stai preparando...">{{ form.get('bio','') }}</textarea></label>
 <label class="wide">Contatto da sbloccare dopo il match<input name="contact" maxlength="160" placeholder="@telegram, Instagram o email" value="{{ form.get('contact','') }}"></label>
 <label class="wide">Password <small>almeno 6 caratteri, ti servirà per accedere</small><input type="password" name="password" minlength="6" required autocomplete="new-password"></label>
+<p class="meta wide">Ti mandiamo un'email per confermare che l'indirizzo è tuo. Registrandoti dichiari di aver letto l'<a href="{{ url_for('privacy') }}">informativa privacy</a>.</p>
 <button class="btn primary wide">Crea account →</button></form></div>{% endblock %}
