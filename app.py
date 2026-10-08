@@ -13,6 +13,7 @@ from functools import wraps
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    session, url_for)
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import inspect, text
 from itsdangerous import BadSignature, SignatureExpired, URLSafeTimedSerializer
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.security import check_password_hash, generate_password_hash
@@ -31,6 +32,9 @@ ALLOWED_EMAIL_DOMAIN = os.environ.get("ALLOWED_EMAIL_DOMAIN", "").strip().lower(
 BREVO_API_KEY = os.environ.get("BREVO_API_KEY", "").strip()
 MAIL_FROM = os.environ.get("MAIL_FROM", "").strip()
 MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Banco")
+# indirizzo per assistenza e richieste privacy (cancellazione dati); se manca si usa il mittente
+CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "").strip() or MAIL_FROM
+VERIFY_MAX_AGE = 3 * 24 * 60 * 60   # il link di conferma email vale 3 giorni
 
 
 def _database_url():
@@ -85,10 +89,16 @@ class User(db.Model):
     university_id = db.Column(db.Integer, db.ForeignKey("university.id"), nullable=False)
     university = db.relationship("University")
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    # False finché lo studente non apre il link di conferma ricevuto via email
+    email_verified = db.Column(db.Boolean, nullable=False, default=False)
 
     @property
     def is_demo(self):
         return self.email.endswith("@" + DEMO_DOMAIN)
+
+    @property
+    def verified(self):
+        return bool(self.email_verified) or self.is_demo
 
 
 class StudyRequest(db.Model):
@@ -135,6 +145,8 @@ LIMITS = {
     ("reset", "email"): (3, 60),     # max 3 email di recupero l'ora per account (protegge la quota Brevo)
     ("reset", "ip"): (20, 60),
     ("register", "ip"): (60, 60),
+    ("verify", "email"): (3, 60),    # max 3 email di conferma l'ora per account
+    ("verify", "ip"): (20, 60),
     ("demo", "ip"): (30, 60),
 }
 
@@ -188,6 +200,14 @@ def current_user():
     user = db.session.get(User, uid)
     if user is None:          # utente cancellato / DB ricreato
         session.clear()
+        return None
+    # se la password è cambiata (es. recupero password) le altre sessioni aperte decadono
+    fp = session.get("pw")
+    if fp is None:            # sessioni aperte prima di questo controllo: le adottiamo
+        session["pw"] = user.password_hash[-12:]
+    elif fp != user.password_hash[-12:]:
+        session.clear()
+        return None
     return user
 
 
@@ -195,6 +215,7 @@ def log_in(user):
     session.clear()
     session.permanent = True
     session["user_id"] = user.id
+    session["pw"] = user.password_hash[-12:]
 
 
 def login_required(view):
@@ -203,6 +224,18 @@ def login_required(view):
         if not current_user():
             flash("Accedi per continuare.", "error")
             return redirect(url_for("login"))
+        return view(*args, **kwargs)
+    return wrapper
+
+
+def verified_required(view):
+    """Pubblicare e contattare richiede l'email confermata (da usare dopo login_required)."""
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if not current_user().verified:
+            flash("Prima conferma la tua email: apri il link che ti abbiamo mandato "
+                  "(controlla anche lo spam) o fattelo rimandare qui sopra.", "error")
+            return redirect(url_for("feed"))
         return view(*args, **kwargs)
     return wrapper
 
@@ -229,7 +262,7 @@ def inject_globals():
     if me:
         pending = ContactRequest.query.filter_by(receiver_id=me.id, status="pending").count()
     return {"me": me, "csrf_token": csrf_token, "pending_count": pending,
-            "STATUS_LABELS": STATUS_LABELS, "DEMO_MODE": DEMO_MODE,
+            "STATUS_LABELS": STATUS_LABELS, "DEMO_MODE": DEMO_MODE, "CONTACT_EMAIL": CONTACT_EMAIL,
             "DAYS": DAYS, "SLOTS": SLOTS, "MODES": MODES,
             "COURSE_GROUPS": COURSE_GROUPS, "ALL_COURSES": ALL_LABELS}
 
@@ -297,6 +330,21 @@ def reset_serializer():
     return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="password-reset")
 
 
+def verify_serializer():
+    return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="email-verify")
+
+
+def send_verification(user):
+    token = verify_serializer().dumps({"u": user.id, "e": user.email})
+    link = url_for("verify_email", token=token, _external=True)
+    send_email(user.email, "Conferma la tua email su Banco", email_layout(
+        "Conferma la tua email",
+        "Ciao %s, manca un passo: conferma che questo indirizzo è tuo. "
+        "Finché non lo confermi non puoi pubblicare richieste né contattare altri studenti. "
+        "Il link vale 3 giorni. Se non ti sei registrato tu su Banco, ignora questa email." % user.name,
+        "Conferma la mia email", link))
+
+
 def active_university():
     return University.query.filter_by(active=True).first()
 
@@ -326,6 +374,11 @@ def health():
     return "ok"
 
 
+@app.route("/privacy")
+def privacy():
+    return render_template("privacy.html")
+
+
 @app.route("/register", methods=["GET", "POST"])
 def register():
     uni = active_university()
@@ -343,7 +396,9 @@ def register():
         if not email_allowed(email, uni):
             error = "Per il lancio accettiamo solo email @%s." % domain
         elif User.query.filter_by(email=email).first():
-            flash("Questa email è già registrata: accedi.", "error")
+            flash("Questa email è già registrata: accedi. Se non ti sei registrato tu, "
+                  "usa \"Password dimenticata\": il link arriva solo a te e l'account diventa tuo.",
+                  "error")
             return redirect(url_for("login"))
         elif not name:
             error = "Il nome è obbligatorio."
@@ -358,13 +413,15 @@ def register():
             return render_template("register.html", domain=domain, form=request.form,
                                    any_email=ALLOWED_EMAIL_DOMAIN == "*")
         user = User(email=email, password_hash=generate_password_hash(password),
-                    name=name, degree=degree, year=year,
+                    name=name, degree=degree, year=year, email_verified=False,
                     bio=clean("bio", 150), contact=clean("contact", 160), university=uni)
         db.session.add(user)
         db.session.commit()
         record("register")
+        record("verify", email)
+        send_verification(user)
         log_in(user)
-        flash("Benvenuto su Banco, %s." % user.name, "success")
+        flash("Benvenuto su Banco, %s. Manca solo la conferma dell'email." % user.name, "success")
         return redirect(url_for("feed"))
     return render_template("register.html", domain=domain, form={},
                            any_email=ALLOWED_EMAIL_DOMAIN == "*")
@@ -447,11 +504,52 @@ def reset_password(token):
             flash("Le due password non coincidono.", "error")
             return redirect(request.path)
         user.password_hash = generate_password_hash(pw)
+        user.email_verified = True   # il link è arrivato nella sua casella: l'email è sua
         db.session.commit()
-        log_in(user)
+        log_in(user)                 # le altre sessioni aperte su questo account decadono
         flash("Password aggiornata: sei dentro.", "success")
         return redirect(url_for("feed"))
     return render_template("reset.html", name=user.name)
+
+
+# ---------------------------------------------------------------- conferma email
+@app.route("/email/conferma/<token>")
+def verify_email(token):
+    try:
+        data = verify_serializer().loads(token, max_age=VERIFY_MAX_AGE)
+    except SignatureExpired:
+        flash("Il link di conferma è scaduto: accedi e fattene mandare uno nuovo.", "error")
+        return redirect(url_for("login"))
+    except BadSignature:
+        flash("Link di conferma non valido.", "error")
+        return redirect(url_for("index"))
+    user = db.session.get(User, data.get("u"))
+    if not user or user.email != data.get("e"):
+        flash("Link di conferma non valido.", "error")
+        return redirect(url_for("index"))
+    if not user.email_verified:
+        user.email_verified = True
+        db.session.commit()
+    me = current_user()
+    if not me or me.id != user.id:
+        log_in(user)
+    flash("Email confermata: ora puoi pubblicare richieste e contattare altri studenti.", "success")
+    return redirect(url_for("feed"))
+
+
+@app.post("/email/rimanda")
+@login_required
+def resend_verification():
+    me = current_user()
+    if me.verified:
+        return redirect(url_for("feed"))
+    if too_many("verify", me.email):
+        flash("Ti abbiamo già mandato diverse email: aspetta un po' e controlla anche lo spam.", "error")
+    else:
+        record("verify", me.email)
+        send_verification(me)
+        flash("Email di conferma rimandata a %s (controlla anche lo spam)." % me.email, "success")
+    return redirect(request.referrer or url_for("feed"))
 
 
 # ---------------------------------------------------------------- demo
@@ -550,6 +648,7 @@ def feed():
 
 @app.route("/request/new", methods=["GET", "POST"])
 @login_required
+@verified_required
 def new_request():
     me = current_user()
     if request.method == "POST":
@@ -607,6 +706,7 @@ def request_action(req_id, action):
 
 @app.post("/request/<int:req_id>/contact")
 @login_required
+@verified_required
 def send_contact(req_id):
     me = current_user()
     study = db.session.get(StudyRequest, req_id) or abort(404)
@@ -643,6 +743,7 @@ def contacts():
 
 @app.post("/contact/<int:cid>/<action>")
 @login_required
+@verified_required
 def contact_action(cid, action):
     me = current_user()
     cr = db.session.get(ContactRequest, cid) or abort(404)
@@ -679,6 +780,8 @@ def profile():
                 return redirect(url_for("profile"))
             me.password_hash = generate_password_hash(new_pw)
         db.session.commit()
+        if new_pw:
+            session["pw"] = me.password_hash[-12:]   # resti dentro, le altre sessioni escono
         flash("Profilo aggiornato.", "success")
         return redirect(url_for("profile"))
     return render_template("profile.html")
@@ -693,8 +796,19 @@ def error_page(e):
 
 
 # ---------------------------------------------------------------- avvio
+def migrate():
+    """Aggiunge le colonne nuove a un database già esistente (create_all crea solo tabelle mancanti)."""
+    cols = {c["name"] for c in inspect(db.engine).get_columns("user")}
+    if "email_verified" not in cols:
+        # gli account creati prima della verifica restano validi: li consideriamo confermati
+        with db.engine.begin() as conn:
+            conn.execute(text('ALTER TABLE "user" ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE'))
+        app.logger.warning("Migrazione: aggiunta colonna user.email_verified")
+
+
 with app.app_context():
     db.create_all()
+    migrate()
     if not University.query.filter_by(email_domain="studenti.unina.it").first():
         db.session.add(University(name="Università degli Studi di Napoli Federico II",
                                   email_domain="studenti.unina.it", active=True))

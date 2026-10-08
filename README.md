@@ -6,6 +6,8 @@ Web app per trovare compagni di studio alla Federico II.
 - Registrazione con email `@studenti.unina.it` (o qualsiasi email con `ALLOWED_EMAIL_DOMAIN=*`), login che resta attivo 30 giorni
 - Corso di laurea scelto dall'elenco ufficiale Federico II (file `courses.py`, raggruppato per Scuola), con opzione "Altro"
 - Password dimenticata: link via email valido 1 ora e usabile una sola volta
+- **Conferma dell'email**: alla registrazione arriva un link (valido 3 giorni); finché non lo apri puoi guardare la bacheca ma non pubblicare né contattare. "Rimanda l'email" max 3 volte l'ora. Anche il recupero password conferma l'email, e cambiando password le altre sessioni aperte si chiudono (così chi si era registrato con l'email di un altro viene buttato fuori)
+- Pagina **/privacy** (informativa GDPR), link Privacy/Assistenza nel footer e nel profilo, dicitura "non affiliato alla Federico II"
 - Email di avviso quando qualcuno ti chiede di studiare insieme e quando accetta
 - Pubblicazione richieste di studio (materia, giorni, fascia, modalità, luogo, nota)
 - Bacheca filtrabile per materia, modalità e orario
@@ -73,6 +75,7 @@ Apri http://127.0.0.1:5001 (su Mac la porta 5000 è occupata da AirPlay) (in loc
    | `ALLOWED_EMAIL_DOMAIN` | *(facoltativa)* vuota = solo studenti.unina.it · `*` = qualsiasi email |
    | `BREVO_API_KEY` | *(facoltativa)* chiave API di Brevo per inviare le email |
    | `MAIL_FROM` | *(facoltativa)* mittente verificato su Brevo, es. `noreply@tuodominio.it` |
+   | `CONTACT_EMAIL` | *(facoltativa)* email per assistenza e richieste privacy; se manca si usa `MAIL_FROM` |
 
    Senza `BREVO_API_KEY` le email non partono: il loro contenuto (link di recupero compreso) compare in **Render → Logs**.
 4. **Deploy Web Service**. Dopo 2-3 minuti in alto trovi il link `https://banco-xxxx.onrender.com`: è quello da mostrare.
@@ -86,7 +89,5 @@ Modifichi i file su GitHub (o ricarichi quelli nuovi) → Render ripubblica da s
 - Neon Free: circa 1 GB di dati per progetto, più che sufficienti per migliaia di utenti di prova.
 
 ## Cosa manca prima di un lancio vero
-- **Verifica email**: oggi chiunque può registrarsi con un indirizzo `@studenti.unina.it` che non è suo.
-  Serve un invio email di conferma (es. Brevo o Resend, entrambi con piano gratuito).
-- Segnalazione/blocco utenti, privacy policy (GDPR: trattate dati di studenti).
+- Segnalazione/blocco utenti; pulsante "Elimina account" (oggi la cancellazione si chiede via email, vedi /privacy).
 - Brevo con un dominio proprio: il piano gratuito invia max 300 email al giorno.
