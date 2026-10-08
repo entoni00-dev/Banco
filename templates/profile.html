@@ -7,4 +7,5 @@
 <label class="wide">Bio <small>max 150 caratteri</small><textarea name="bio" maxlength="150">{{ me.bio or '' }}</textarea></label>
 <label class="wide">Contatto da sbloccare dopo il match<input name="contact" maxlength="160" value="{{ me.contact or '' }}" placeholder="@telegram, Instagram o email"></label>
 <label class="wide">Nuova password <small>lascia vuoto per non cambiarla</small><input type="password" name="new_password" minlength="6" autocomplete="new-password"></label>
-<button class="btn primary wide">Salva modifiche</button></form>{% endblock %}
+<button class="btn primary wide">Salva modifiche</button></form>
+<p class="meta profile-links"><a href="{{ url_for('privacy') }}">Informativa privacy</a>{% if CONTACT_EMAIL %} · <a href="mailto:{{ CONTACT_EMAIL }}?subject=Assistenza%20Banco">Assistenza</a> · <a href="mailto:{{ CONTACT_EMAIL }}?subject=Cancellazione%20account%20Banco">Chiedi la cancellazione dell'account</a>{% endif %}<br>Banco è un progetto indipendente, non affiliato all'Università degli Studi di Napoli Federico II.</p>{% endblock %}

@@ -25,6 +25,8 @@
   </nav>
 </header>
 {% if me and me.is_demo %}<div class="demo-bar">Modalità demo · i profili sono di esempio · <a href="{{ url_for('logout') }}">esci</a></div>{% endif %}
+{% if me and not me.verified %}<div class="verify-bar"><span>Per pubblicare e contattare conferma la tua email: apri il link che ti abbiamo mandato a <b>{{ me.email }}</b> (controlla anche lo spam).</span>
+<form method="post" action="{{ url_for('resend_verification') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button>Rimanda l'email</button></form></div>{% endif %}
 <main class="shell">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
@@ -40,5 +42,6 @@
   <a href="{{ url_for('profile') }}" class="{% if request.endpoint=='profile' %}on{% endif %}">Profilo</a>
 </nav>
 {% endif %}
-<footer>Banco — nato per studiare meglio, insieme. <span>Federico II · MVP</span></footer>
+<footer><span>Banco — nato per studiare meglio, insieme. Progetto indipendente, non affiliato all'Università degli Studi di Napoli Federico II.</span>
+<span class="footer-links"><a href="{{ url_for('privacy') }}">Privacy</a>{% if CONTACT_EMAIL %} · <a href="mailto:{{ CONTACT_EMAIL }}?subject=Assistenza%20Banco">Assistenza</a>{% endif %}</span></footer>
 </body></html>
