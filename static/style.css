@@ -24,3 +24,12 @@
 
 .nav-login{border:1px solid var(--green);padding:10px 14px}
 @media(max-width:800px){.topbar nav{gap:8px}.nav-login,.nav-cta{padding:9px 12px!important;font-size:13px!important}}
+
+/* --- conferma email, footer, privacy --- */
+.verify-bar{background:#f4dfd8;color:#5a2414;font-size:13px;padding:10px 16px;display:flex;gap:12px;justify-content:center;align-items:center;flex-wrap:wrap;text-align:center}
+.verify-bar form{margin:0}.verify-bar button{border:1px solid var(--terracotta);background:transparent;color:var(--terracotta);font:600 13px "Work Sans";padding:6px 10px;cursor:pointer}
+footer{gap:20px;flex-wrap:wrap}footer a{color:var(--muted)}.footer-links{white-space:nowrap}
+.profile-links{margin-top:40px;line-height:1.8}
+.legal{max-width:760px;margin:auto}.legal h1{font-size:52px}.legal h2{font-size:26px;margin:36px 0 8px}.legal p,.legal li{line-height:1.6}.legal ul{padding-left:20px}
+.legal table{border-collapse:collapse;width:100%;font-size:14px}.legal td,.legal th{border:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
+@media(max-width:800px){.legal h1{font-size:40px!important}.legal table{font-size:13px}}
