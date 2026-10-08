@@ -12,6 +12,9 @@ Web app per trovare compagni di studio alla Federico II.
 - Richiesta di contatto → l'altro accetta o rifiuta → il contatto si sblocca solo dopo l'accettazione
 - Chiudi / riapri / elimina le tue richieste
 - Menu in basso su telefono, contatore delle richieste in attesa
+- Limiti anti-abuso: 5 password sbagliate su un account → pausa di 15 minuti; max 3 email di recupero l'ora per account;
+  limiti larghi per rete (il wifi dell'ateneo è un solo indirizzo per centinaia di studenti)
+- `gunicorn.conf.py`: 2 processi × 4 thread (fino a 8 richieste insieme), letto da solo da gunicorn
 - **Demo per chi non ha email unina**: pulsante "Prova la demo" in homepage. Ogni clic crea un ospite nuovo
   con profili di esempio separati da quelli veri (gli utenti veri non li vedono mai).
   Si spegne impostando `DEMO_MODE=0`.
@@ -85,4 +88,5 @@ Modifichi i file su GitHub (o ricarichi quelli nuovi) → Render ripubblica da s
 ## Cosa manca prima di un lancio vero
 - **Verifica email**: oggi chiunque può registrarsi con un indirizzo `@studenti.unina.it` che non è suo.
   Serve un invio email di conferma (es. Brevo o Resend, entrambi con piano gratuito).
-- Recupero password, segnalazione/blocco utenti, privacy policy (GDPR: trattate dati di studenti).
+- Segnalazione/blocco utenti, privacy policy (GDPR: trattate dati di studenti).
+- Brevo con un dominio proprio: il piano gratuito invia max 300 email al giorno.
