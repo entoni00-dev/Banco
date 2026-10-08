@@ -117,6 +117,69 @@ class ContactRequest(db.Model):
     study_request = db.relationship("StudyRequest")
 
 
+class Attempt(db.Model):
+    """Tentativi registrati per i limiti anti-abuso (login sbagliati, recuperi password, ecc.).
+    Sta nel database così il limite vale anche con più processi e dopo un riavvio."""
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(200), index=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, index=True)
+
+
+# ---------------------------------------------------------------- limiti anti-abuso
+# (azione, chi) -> (massimo, finestra in minuti).
+# I limiti per IP sono larghi apposta: all'università centinaia di studenti escono
+# dallo stesso indirizzo (wifi dell'ateneo), e non vogliamo bloccarli tutti insieme.
+LIMITS = {
+    ("login", "email"): (5, 15),     # 5 password sbagliate su un account → pausa di 15 minuti
+    ("login", "ip"): (50, 15),
+    ("reset", "email"): (3, 60),     # max 3 email di recupero l'ora per account (protegge la quota Brevo)
+    ("reset", "ip"): (20, 60),
+    ("register", "ip"): (60, 60),
+    ("demo", "ip"): (30, 60),
+}
+
+
+def client_ip():
+    return request.remote_addr or "?"
+
+
+def _key(action, who, value):
+    return ("%s:%s:%s" % (action, who, value))[:200]
+
+
+def too_many(action, email=None):
+    """True se l'azione ha superato il limite per questo IP o per questa email."""
+    checks = [("ip", client_ip())] + ([("email", email)] if email else [])
+    for who, value in checks:
+        limit = LIMITS.get((action, who))
+        if not limit:
+            continue
+        since = datetime.utcnow() - timedelta(minutes=limit[1])
+        n = Attempt.query.filter(Attempt.key == _key(action, who, value),
+                                 Attempt.created_at >= since).count()
+        if n >= limit[0]:
+            app.logger.warning("Limite superato: %s %s=%s", action, who, value)
+            return True
+    return False
+
+
+def record(action, email=None):
+    db.session.add(Attempt(key=_key(action, "ip", client_ip())))
+    if email:
+        db.session.add(Attempt(key=_key(action, "email", email)))
+    # pulizia: i tentativi più vecchi di un giorno non servono più
+    if secrets.randbelow(50) == 0:
+        Attempt.query.filter(Attempt.created_at < datetime.utcnow() - timedelta(days=1)).delete()
+    db.session.commit()
+
+
+def safe_next(target):
+    """Dopo il login si torna solo a pagine di Banco, mai a siti esterni."""
+    if target and target.startswith("/") and not target.startswith("//") and "\\" not in target:
+        return target
+    return url_for("feed")
+
+
 # ---------------------------------------------------------------- helper
 def current_user():
     uid = session.get("user_id")
@@ -274,6 +337,9 @@ def register():
         name, degree = clean("name", 60), parse_degree()
         year = parse_year(request.form.get("year"))
         error = None
+        if too_many("register"):
+            flash("Troppe registrazioni da questa rete. Riprova tra un po'.", "error")
+            return redirect(url_for("register"))
         if not email_allowed(email, uni):
             error = "Per il lancio accettiamo solo email @%s." % domain
         elif User.query.filter_by(email=email).first():
@@ -296,6 +362,7 @@ def register():
                     bio=clean("bio", 150), contact=clean("contact", 160), university=uni)
         db.session.add(user)
         db.session.commit()
+        record("register")
         log_in(user)
         flash("Benvenuto su Banco, %s." % user.name, "success")
         return redirect(url_for("feed"))
@@ -306,12 +373,18 @@ def register():
 @app.route("/login", methods=["GET", "POST"])
 def login():
     if request.method == "POST":
-        user = User.query.filter_by(email=clean("email", 160).lower()).first()
+        email = clean("email", 160).lower()
+        if too_many("login", email):
+            flash("Troppi tentativi sbagliati. Aspetta 15 minuti oppure usa \"Password dimenticata\".",
+                  "error")
+            return redirect(url_for("login"))
+        user = User.query.filter_by(email=email).first()
         if not user or not check_password_hash(user.password_hash, request.form.get("password", "")):
+            record("login", email)
             flash("Email o password non corretti.", "error")
             return redirect(url_for("login"))
         log_in(user)
-        return redirect(request.args.get("next") or url_for("feed"))
+        return redirect(safe_next(request.args.get("next")))
     return render_template("login.html")
 
 
@@ -329,7 +402,12 @@ RESET_MAX_AGE = 60 * 60  # il link vale 1 ora
 def forgot_password():
     if request.method == "POST":
         email = clean("email", 160).lower()
-        user = User.query.filter_by(email=email).first()
+        # oltre il limite non mandiamo nulla, ma la risposta resta identica
+        # (così non si capisce né chi è iscritto né quando è scattato il blocco)
+        limited = too_many("reset", email)
+        if not limited:
+            record("reset", email)
+        user = None if limited else User.query.filter_by(email=email).first()
         if user and not user.is_demo:
             # l'impronta della password rende il link usa-e-getta: cambiata la password, non vale più
             token = reset_serializer().dumps({"u": user.id, "p": user.password_hash[-12:]})
@@ -415,6 +493,10 @@ def demo_login():
     """Crea un ospite nuovo a ogni clic, così chi prova la demo non vede le azioni degli altri."""
     if not DEMO_MODE:
         abort(404)
+    if too_many("demo"):
+        flash("Troppe demo avviate da questa rete. Riprova tra un po'.", "error")
+        return redirect(url_for("index"))
+    record("demo")
     seed_demo()
     uni = active_university()
     guest = User(email="ospite-%s@%s" % (secrets.token_hex(4), DEMO_DOMAIN),
