@@ -1,0 +1,8 @@
+{% extends "base.html" %}{% block title %}Conferma l'email · Banco{% endblock %}{% block content %}<div class="form-wrap narrow"><p class="eyebrow">CONFERMA L'EMAIL</p><h1>Inserisci il codice.</h1>
+<p class="lead small">Ti abbiamo mandato un codice a 6 cifre a <b>{{ me.email }}</b>. Vale {{ ttl }} minuti. Controlla anche lo spam.</p>
+<form method="post" class="form-grid"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<label class="wide">Codice<input class="code-input" name="code" required inputmode="numeric" pattern="[0-9 ]{6,7}" maxlength="7" autocomplete="one-time-code" placeholder="000000" autofocus></label>
+<button class="btn primary wide">Conferma →</button></form>
+<form method="post" action="{{ url_for('resend_verification') }}" class="resend"><input type="hidden" name="_csrf" value="{{ csrf_token() }}">
+<p class="meta">Non è arrivato? <button class="linklike">Rimanda il codice</button> (massimo 3 volte l'ora; il codice precedente smette di valere).</p></form>
+<p class="meta">Hai sbagliato email? Scrivici dalla pagina <a href="{{ url_for('privacy') }}">privacy</a> o usa "Password dimenticata" con quella giusta.</p></div>{% endblock %}

@@ -25,8 +25,9 @@
   </nav>
 </header>
 {% if me and me.is_demo %}<div class="demo-bar">Modalità demo · i profili sono di esempio · <a href="{{ url_for('logout') }}">esci</a></div>{% endif %}
-{% if me and not me.verified %}<div class="verify-bar"><span>Per pubblicare e contattare conferma la tua email: apri il link che ti abbiamo mandato a <b>{{ me.email }}</b> (controlla anche lo spam).</span>
-<form method="post" action="{{ url_for('resend_verification') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button>Rimanda l'email</button></form></div>{% endif %}
+{% if me and not me.verified %}<div class="verify-bar"><span>Per pubblicare e contattare conferma la tua email: inserisci il codice a 6 cifre che ti abbiamo mandato a <b>{{ me.email }}</b> (controlla anche lo spam).</span>
+<a class="code-link" href="{{ url_for('verify_code') }}">Inserisci il codice</a>
+<form method="post" action="{{ url_for('resend_verification') }}"><input type="hidden" name="_csrf" value="{{ csrf_token() }}"><button>Rimanda il codice</button></form></div>{% endif %}
 <main class="shell">
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% for category, message in messages %}<div class="flash {{ category }}">{{ message }}</div>{% endfor %}
