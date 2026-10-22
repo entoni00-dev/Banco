@@ -42,13 +42,7 @@
   <a href="{{ url_for('profile') }}" class="{% if request.endpoint=='profile' %}on{% endif %}">Profilo</a>
 </nav>
 {% endif %}
-<section class="sponsor" aria-label="Sponsor">
-  <span>Con il sostegno di</span>
-  <a href="https://www.instagram.com/assingegneria/" target="_blank" rel="noopener noreferrer" title="ASSI Ingegneria su Instagram">
-    <img src="{{ url_for('static', filename='assi-ingegneria.svg') }}" alt="Logo ASSI Ingegneria" width="64" height="61" loading="lazy">
-  </a>
-  <a class="sponsor-ig" href="https://www.instagram.com/assingegneria/" target="_blank" rel="noopener noreferrer">Seguili su Instagram @assingegneria</a>
-</section>
 <footer><span>Banco — nato per studiare meglio, insieme. Progetto indipendente, non affiliato all'Università degli Studi di Napoli Federico II.</span>
-<span class="footer-links"><a href="{{ url_for('privacy') }}">Privacy</a>{% if CONTACT_EMAIL %} · <a href="mailto:{{ CONTACT_EMAIL }}?subject=Assistenza%20Banco">Assistenza</a>{% endif %}</span></footer>
+<span class="footer-right"><span class="footer-links"><a href="{{ url_for('privacy') }}">Privacy</a>{% if CONTACT_EMAIL %} · <a href="mailto:{{ CONTACT_EMAIL }}?subject=Assistenza%20Banco">Assistenza</a>{% endif %}</span>
+<a class="sponsor-btn" href="https://www.instagram.com/assingegneria/" target="_blank" rel="noopener noreferrer" title="ASSI Ingegneria su Instagram"><span>Con il sostegno di</span><img src="{{ url_for('static', filename='assi-ingegneria.svg') }}" alt="ASSI Ingegneria" width="30" height="29" loading="lazy"></a></span></footer>
 </body></html>
