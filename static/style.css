@@ -39,3 +39,9 @@ footer{gap:20px;flex-wrap:wrap}footer a{color:var(--muted)}.footer-links{white-s
 footer a.sponsor-btn{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--line);background:#fffdf7;padding:6px 12px;text-decoration:none;color:var(--muted);font-size:12px;font-weight:600}
 footer a.sponsor-btn:hover{border-color:var(--green);color:var(--green)}
 .sponsor-btn img{display:block;height:29px;width:auto}
+
+/* --- codice di conferma --- */
+.verify-bar a.code-link{background:var(--terracotta);color:#fff;font:600 13px "Work Sans",sans-serif;padding:7px 12px;text-decoration:none}
+.code-input{font-size:34px;letter-spacing:10px;text-align:center;font-weight:600}
+.linklike{border:0;background:none;padding:0;color:var(--green);font:600 inherit "Work Sans",sans-serif;text-decoration:underline;cursor:pointer}
+.resend{margin-top:18px}

@@ -6,7 +6,7 @@ Web app per trovare compagni di studio alla Federico II.
 - Registrazione con email `@studenti.unina.it` (o qualsiasi email con `ALLOWED_EMAIL_DOMAIN=*`), login che resta attivo 30 giorni
 - Corso di laurea scelto dall'elenco ufficiale Federico II (file `courses.py`, raggruppato per Scuola), con opzione "Altro"
 - Password dimenticata: link via email valido 1 ora e usabile una sola volta
-- **Conferma dell'email**: alla registrazione arriva un link (valido 3 giorni); finché non lo apri puoi guardare la bacheca ma non pubblicare né contattare. "Rimanda l'email" max 3 volte l'ora. Anche il recupero password conferma l'email, e cambiando password le altre sessioni aperte si chiudono (così chi si era registrato con l'email di un altro viene buttato fuori)
+- **Conferma dell'email**: alla registrazione arriva un codice a 6 cifre (valido 15 minuti, salvato solo come impronta HMAC, max 5 tentativi per codice, poi se ne chiede uno nuovo). Finché non lo inserisci puoi guardare la bacheca ma non pubblicare né contattare. "Rimanda il codice" max 3 volte l'ora e il codice precedente smette di valere. I vecchi link di conferma già spediti funzionano ancora. Anche il recupero password conferma l'email, e cambiando password le altre sessioni aperte si chiudono (così chi si era registrato con l'email di un altro viene buttato fuori)
 - Pagina **/privacy** (informativa GDPR), link Privacy/Assistenza nel footer e nel profilo, dicitura "non affiliato alla Federico II"
 - Email di avviso quando qualcuno ti chiede di studiare insieme e quando accetta
 - Pubblicazione richieste di studio (materia, giorni, fascia, modalità, luogo, nota)

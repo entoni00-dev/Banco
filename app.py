@@ -3,12 +3,15 @@
 Funziona in locale con SQLite e online con Postgres (es. Neon) tramite la
 variabile d'ambiente DATABASE_URL.
 """
+import hashlib
+import hmac
 import json
 import os
 import secrets
 import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
+from html import escape
 
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    session, url_for)
@@ -34,7 +37,9 @@ MAIL_FROM = os.environ.get("MAIL_FROM", "").strip()
 MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Banco")
 # indirizzo per assistenza e richieste privacy (cancellazione dati); se manca si usa il mittente
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "").strip() or MAIL_FROM
-VERIFY_MAX_AGE = 3 * 24 * 60 * 60   # il link di conferma email vale 3 giorni
+VERIFY_MAX_AGE = 3 * 24 * 60 * 60   # i vecchi link di conferma (già spediti) valgono 3 giorni
+CODE_TTL_MIN = 15                    # il codice di conferma a 6 cifre vale 15 minuti
+CODE_MAX_TRIES = 5                   # dopo 5 codici sbagliati bisogna chiederne uno nuovo
 
 
 def _database_url():
@@ -91,6 +96,10 @@ class User(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     # False finché lo studente non apre il link di conferma ricevuto via email
     email_verified = db.Column(db.Boolean, nullable=False, default=False)
+    # codice di conferma: si salva solo l'impronta (HMAC), mai il codice in chiaro
+    verify_code_hash = db.Column(db.String(64))
+    verify_code_expires = db.Column(db.DateTime)
+    verify_code_tries = db.Column(db.Integer, nullable=False, default=0)
 
     @property
     def is_demo(self):
@@ -147,6 +156,8 @@ LIMITS = {
     ("register", "ip"): (60, 60),
     ("verify", "email"): (3, 60),    # max 3 email di conferma l'ora per account
     ("verify", "ip"): (20, 60),
+    ("code", "email"): (15, 60),     # codici sbagliati: 15 l'ora per account...
+    ("code", "ip"): (100, 15),       # ...e 100 ogni 15 minuti per rete (wifi dell'ateneo)
     ("demo", "ip"): (30, 60),
 }
 
@@ -233,9 +244,9 @@ def verified_required(view):
     @wraps(view)
     def wrapper(*args, **kwargs):
         if not current_user().verified:
-            flash("Prima conferma la tua email: apri il link che ti abbiamo mandato "
-                  "(controlla anche lo spam) o fattelo rimandare qui sopra.", "error")
-            return redirect(url_for("feed"))
+            flash("Prima conferma la tua email: inserisci il codice a 6 cifre che ti abbiamo "
+                  "mandato (controlla anche lo spam) o fattelo rimandare.", "error")
+            return redirect(url_for("verify_code"))
         return view(*args, **kwargs)
     return wrapper
 
@@ -334,15 +345,26 @@ def verify_serializer():
     return URLSafeTimedSerializer(app.config["SECRET_KEY"], salt="email-verify")
 
 
+def _code_hash(user_id, code):
+    return hmac.new(app.config["SECRET_KEY"].encode(), ("%s:%s" % (user_id, code)).encode(),
+                    hashlib.sha256).hexdigest()
+
+
 def send_verification(user):
-    token = verify_serializer().dumps({"u": user.id, "e": user.email})
-    link = url_for("verify_email", token=token, _external=True)
-    send_email(user.email, "Conferma la tua email su Banco", email_layout(
-        "Conferma la tua email",
-        "Ciao %s, manca un passo: conferma che questo indirizzo è tuo. "
-        "Finché non lo confermi non puoi pubblicare richieste né contattare altri studenti. "
-        "Il link vale 3 giorni. Se non ti sei registrato tu su Banco, ignora questa email." % user.name,
-        "Conferma la mia email", link))
+    """Genera un codice a 6 cifre nuovo (quello precedente smette di valere) e lo manda via email."""
+    code = "%06d" % secrets.randbelow(10 ** 6)
+    user.verify_code_hash = _code_hash(user.id, code)
+    user.verify_code_expires = datetime.utcnow() + timedelta(minutes=CODE_TTL_MIN)
+    user.verify_code_tries = 0
+    db.session.commit()
+    big = ('<span style="display:block;font-size:34px;letter-spacing:8px;font-weight:700;'
+           'color:#1f3b2c;margin:14px 0">%s</span>' % code)
+    send_email(user.email, "Il tuo codice Banco: %s" % code, email_layout(
+        "Il tuo codice di conferma",
+        "Ciao %s, inserisci questo codice su Banco per confermare che l'email è tua:%s"
+        "Vale %d minuti. Finché non lo inserisci non puoi pubblicare richieste né contattare "
+        "altri studenti. Se non ti sei registrato tu su Banco, ignora questa email e non "
+        "comunicare il codice a nessuno." % (escape(user.name), big, CODE_TTL_MIN)))
 
 
 def active_university():
@@ -421,8 +443,8 @@ def register():
         record("verify", email)
         send_verification(user)
         log_in(user)
-        flash("Benvenuto su Banco, %s. Manca solo la conferma dell'email." % user.name, "success")
-        return redirect(url_for("feed"))
+        flash("Benvenuto su Banco, %s. Ti abbiamo mandato un codice a 6 cifre: inseriscilo qui sotto." % user.name, "success")
+        return redirect(url_for("verify_code"))
     return render_template("register.html", domain=domain, form={},
                            any_email=ALLOWED_EMAIL_DOMAIN == "*")
 
@@ -537,6 +559,45 @@ def verify_email(token):
     return redirect(url_for("feed"))
 
 
+@app.route("/email/codice", methods=["GET", "POST"])
+@login_required
+def verify_code():
+    me = current_user()
+    if me.verified:
+        return redirect(url_for("feed"))
+    if request.method == "POST":
+        sent = "".join(ch for ch in request.form.get("code", "") if ch.isdigit())
+        if too_many("code", me.email):
+            flash("Troppi codici sbagliati: aspetta un po' e riprova.", "error")
+            return redirect(url_for("verify_code"))
+        if (not me.verify_code_hash or not me.verify_code_expires
+                or me.verify_code_expires < datetime.utcnow()):
+            flash("Il codice è scaduto o non ce n'è uno attivo: clicca \"Rimanda il codice\".", "error")
+            return redirect(url_for("verify_code"))
+        if me.verify_code_tries >= CODE_MAX_TRIES:
+            flash("Troppi tentativi sbagliati con questo codice: clicca \"Rimanda il codice\".", "error")
+            return redirect(url_for("verify_code"))
+        if len(sent) == 6 and hmac.compare_digest(me.verify_code_hash, _code_hash(me.id, sent)):
+            me.email_verified = True
+            me.verify_code_hash = None
+            me.verify_code_expires = None
+            me.verify_code_tries = 0
+            db.session.commit()
+            flash("Email confermata: ora puoi pubblicare richieste e contattare altri studenti.", "success")
+            return redirect(url_for("feed"))
+        me.verify_code_tries += 1
+        left = CODE_MAX_TRIES - me.verify_code_tries
+        if left <= 0:
+            me.verify_code_hash = None      # codice bruciato: serve uno nuovo
+            me.verify_code_expires = None
+        db.session.commit()
+        record("code", me.email)
+        flash("Codice sbagliato. %s" % ("Hai ancora %d tentativi." % left if left > 0 else
+              "Hai finito i tentativi: clicca \"Rimanda il codice\"."), "error")
+        return redirect(url_for("verify_code"))
+    return render_template("verify_code.html", ttl=CODE_TTL_MIN)
+
+
 @app.post("/email/rimanda")
 @login_required
 def resend_verification():
@@ -548,8 +609,8 @@ def resend_verification():
     else:
         record("verify", me.email)
         send_verification(me)
-        flash("Email di conferma rimandata a %s (controlla anche lo spam)." % me.email, "success")
-    return redirect(request.referrer or url_for("feed"))
+        flash("Nuovo codice mandato a %s (controlla anche lo spam). Il precedente non vale più." % me.email, "success")
+    return redirect(url_for("verify_code"))
 
 
 # ---------------------------------------------------------------- demo
@@ -799,11 +860,22 @@ def error_page(e):
 def migrate():
     """Aggiunge le colonne nuove a un database già esistente (create_all crea solo tabelle mancanti)."""
     cols = {c["name"] for c in inspect(db.engine).get_columns("user")}
-    if "email_verified" not in cols:
+    new_cols = [
         # gli account creati prima della verifica restano validi: li consideriamo confermati
-        with db.engine.begin() as conn:
-            conn.execute(text('ALTER TABLE "user" ADD COLUMN email_verified BOOLEAN NOT NULL DEFAULT TRUE'))
-        app.logger.warning("Migrazione: aggiunta colonna user.email_verified")
+        ("email_verified", "BOOLEAN NOT NULL DEFAULT TRUE"),
+        ("verify_code_hash", "VARCHAR(64)"),
+        ("verify_code_expires", "TIMESTAMP"),
+        ("verify_code_tries", "INTEGER NOT NULL DEFAULT 0"),
+    ]
+    for name, ddl in new_cols:
+        if name in cols:
+            continue
+        try:
+            with db.engine.begin() as conn:
+                conn.execute(text('ALTER TABLE "user" ADD COLUMN %s %s' % (name, ddl)))
+            app.logger.warning("Migrazione: aggiunta colonna user.%s", name)
+        except Exception as exc:   # es. un altro processo l'ha appena aggiunta
+            app.logger.warning("Migrazione user.%s non eseguita: %s", name, exc)
 
 
 with app.app_context():
