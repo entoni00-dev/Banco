@@ -33,3 +33,10 @@ footer{gap:20px;flex-wrap:wrap}footer a{color:var(--muted)}.footer-links{white-s
 .legal{max-width:760px;margin:auto}.legal h1{font-size:52px}.legal h2{font-size:26px;margin:36px 0 8px}.legal p,.legal li{line-height:1.6}.legal ul{padding-left:20px}
 .legal table{border-collapse:collapse;width:100%;font-size:14px}.legal td,.legal th{border:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
 @media(max-width:800px){.legal h1{font-size:40px!important}.legal table{font-size:13px}}
+
+/* --- sponsor --- */
+.sponsor{border-top:1px solid var(--line);padding:28px 6vw;display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center}
+.sponsor span{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--muted);font-weight:600}
+.sponsor img{display:block;height:61px;width:auto}
+.sponsor a{text-decoration:none}.sponsor .sponsor-ig{font-size:13px;color:var(--muted);font-weight:600}.sponsor .sponsor-ig:hover{color:var(--green)}
+@media(max-width:800px){body.logged .sponsor{padding-bottom:96px}}
