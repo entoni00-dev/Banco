@@ -8,6 +8,7 @@ import hmac
 import json
 import os
 import secrets
+import time
 import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
@@ -38,8 +39,8 @@ MAIL_FROM_NAME = os.environ.get("MAIL_FROM_NAME", "Banco")
 # indirizzo per assistenza e richieste privacy (cancellazione dati); se manca si usa il mittente
 CONTACT_EMAIL = os.environ.get("CONTACT_EMAIL", "").strip() or MAIL_FROM
 VERIFY_MAX_AGE = 3 * 24 * 60 * 60   # i vecchi link di conferma (già spediti) valgono 3 giorni
-CODE_TTL_MIN = 15                    # il codice di conferma a 6 cifre vale 15 minuti
-CODE_MAX_TRIES = 5                   # dopo 5 codici sbagliati bisogna chiederne uno nuovo
+CODE_TTL_MIN = 15                    # finestra del codice: lo stesso codice vale da 15 a 30 minuti
+CODE_MAX_TRIES = 5                   # 5 codici sbagliati per finestra, poi si aspetta la finestra dopo
 
 
 def _database_url():
@@ -100,6 +101,7 @@ class User(db.Model):
     verify_code_hash = db.Column(db.String(64))
     verify_code_expires = db.Column(db.DateTime)
     verify_code_tries = db.Column(db.Integer, nullable=False, default=0)
+    verify_code_window = db.Column(db.Integer)   # finestra temporale dell'ultimo codice inviato
 
     @property
     def is_demo(self):
@@ -154,7 +156,7 @@ LIMITS = {
     ("reset", "email"): (3, 60),     # max 3 email di recupero l'ora per account (protegge la quota Brevo)
     ("reset", "ip"): (20, 60),
     ("register", "ip"): (60, 60),
-    ("verify", "email"): (3, 60),    # max 3 email di conferma l'ora per account
+    ("verify", "email"): (6, 60),    # max 6 invii del codice l'ora per account (è sempre lo stesso codice)
     ("verify", "ip"): (20, 60),
     ("code", "email"): (15, 60),     # codici sbagliati: 15 l'ora per account...
     ("code", "ip"): (100, 15),       # ...e 100 ogni 15 minuti per rete (wifi dell'ateneo)
@@ -356,19 +358,44 @@ def _code_hash(user_id, code):
                     hashlib.sha256).hexdigest()
 
 
+def _window_now():
+    return int(time.time() // (CODE_TTL_MIN * 60))
+
+
+def _code_for(user_id, window):
+    """Codice a 6 cifre derivato da chiave segreta, utente e finestra di 15 minuti.
+    Dentro la stessa finestra il codice è sempre lo stesso: "Rimanda" non invalida le email
+    già arrivate (con la posta in ritardo succedeva che si digitasse un codice appena annullato).
+    Il codice di una finestra vale fino alla fine della finestra successiva (15-30 minuti)."""
+    digest = hmac.new(app.config["SECRET_KEY"].encode(), ("verify-code:%s:%s" % (user_id, window)).encode(),
+                      hashlib.sha256).digest()
+    return "%06d" % (int.from_bytes(digest[:8], "big") % 10 ** 6)
+
+
+def _next_window_text():
+    """Ora (Roma) in cui si apre la finestra successiva, per i messaggi all'utente."""
+    from zoneinfo import ZoneInfo
+    start = (_window_now() + 1) * CODE_TTL_MIN * 60
+    return datetime.fromtimestamp(start, ZoneInfo("Europe/Rome")).strftime("%H:%M")
+
+
 def send_verification(user):
-    """Genera un codice a 6 cifre nuovo (quello precedente smette di valere) e lo manda via email."""
-    code = "%06d" % secrets.randbelow(10 ** 6)
-    user.verify_code_hash = _code_hash(user.id, code)
-    user.verify_code_expires = datetime.utcnow() + timedelta(minutes=CODE_TTL_MIN)
-    user.verify_code_tries = 0
-    db.session.commit()
+    """Manda il codice a 6 cifre della finestra corrente (stesso codice se si rimanda)."""
+    window = _window_now()
+    if user.verify_code_window != window:
+        user.verify_code_window = window
+        user.verify_code_tries = 0         # finestra nuova: tentativi azzerati
+        user.verify_code_hash = None       # eventuale codice del vecchio sistema: non vale più
+        user.verify_code_expires = None
+        db.session.commit()
+    code = _code_for(user.id, window)
     big = Markup('<span style="display:block;font-size:34px;letter-spacing:8px;font-weight:700;'
                  'color:#1f3b2c;margin:14px 0">%s</span>') % code
     text = Markup("Ciao %s, inserisci questo codice su Banco per confermare che l'email è tua:%s"
-                  "Vale %d minuti. Finché non lo inserisci non puoi pubblicare richieste né contattare "
-                  "altri studenti. Se non ti sei registrato tu su Banco, ignora questa email e non "
-                  "comunicare il codice a nessuno.") % (user.name, big, CODE_TTL_MIN)
+                  "Vale almeno %d minuti. Se lo richiedi più volte ti arriva sempre lo stesso: usa pure "
+                  "quello dell'email più comoda. Finché non lo inserisci non puoi pubblicare richieste "
+                  "né contattare altri studenti. Se non ti sei registrato tu su Banco, ignora questa "
+                  "email e non comunicare il codice a nessuno.") % (user.name, big, CODE_TTL_MIN)
     send_email(user.email, "Il tuo codice Banco: %s" % code, email_layout("Il tuo codice di conferma", text))
 
 
@@ -575,14 +602,17 @@ def verify_code():
         if too_many("code", me.email):
             flash("Troppi codici sbagliati: aspetta un po' e riprova.", "error")
             return redirect(url_for("verify_code"))
-        if (not me.verify_code_hash or not me.verify_code_expires
-                or me.verify_code_expires < datetime.utcnow()):
-            flash("Il codice è scaduto o non ce n'è uno attivo: clicca \"Rimanda il codice\".", "error")
+        window = me.verify_code_window
+        # il codice vale per la finestra in cui è stato mandato e per quella successiva
+        active = window is not None and 0 <= _window_now() - window <= 1
+        if not active:
+            flash("Non c'è un codice attivo (o è scaduto): clicca \"Rimanda il codice\".", "error")
             return redirect(url_for("verify_code"))
         if me.verify_code_tries >= CODE_MAX_TRIES:
-            flash("Troppi tentativi sbagliati con questo codice: clicca \"Rimanda il codice\".", "error")
+            flash("Hai finito i tentativi per questo codice: riprova dopo le %s (clicca \"Rimanda il codice\" "
+                  "e usa il codice nuovo)." % _next_window_text(), "error")
             return redirect(url_for("verify_code"))
-        if len(sent) == 6 and hmac.compare_digest(me.verify_code_hash, _code_hash(me.id, sent)):
+        if len(sent) == 6 and hmac.compare_digest(_code_for(me.id, window), sent):
             me.email_verified = True
             me.verify_code_hash = None
             me.verify_code_expires = None
@@ -591,14 +621,13 @@ def verify_code():
             flash("Email confermata: ora puoi pubblicare richieste e contattare altri studenti.", "success")
             return redirect(url_for("feed"))
         me.verify_code_tries += 1
-        left = CODE_MAX_TRIES - me.verify_code_tries
-        if left <= 0:
-            me.verify_code_hash = None      # codice bruciato: serve uno nuovo
-            me.verify_code_expires = None
         db.session.commit()
         record("code", me.email)
+        app.logger.warning("Codice di conferma rifiutato: utente=%s cifre_inserite=%d tentativi=%d finestra=%s ora=%s",
+                           me.email, len(sent), me.verify_code_tries, window, _window_now())
+        left = CODE_MAX_TRIES - me.verify_code_tries
         flash("Codice sbagliato. %s" % ("Hai ancora %d tentativi." % left if left > 0 else
-              "Hai finito i tentativi: clicca \"Rimanda il codice\"."), "error")
+              "Hai finito i tentativi: riprova dopo le %s." % _next_window_text()), "error")
         return redirect(url_for("verify_code"))
     return render_template("verify_code.html", ttl=CODE_TTL_MIN)
 
@@ -610,11 +639,11 @@ def resend_verification():
     if me.verified:
         return redirect(url_for("feed"))
     if too_many("verify", me.email):
-        flash("Ti abbiamo già mandato diverse email: aspetta un po' e controlla anche lo spam.", "error")
+        flash("Ti abbiamo già mandato il codice più volte: controlla la posta (anche spam e indesiderata). Puoi chiederlo ancora tra un po'.", "error")
     else:
         record("verify", me.email)
         send_verification(me)
-        flash("Nuovo codice mandato a %s (controlla anche lo spam). Il precedente non vale più." % me.email, "success")
+        flash("Codice rimandato a %s (controlla anche lo spam). È lo stesso di prima: anche quello già arrivato vale." % me.email, "success")
     return redirect(url_for("verify_code"))
 
 
@@ -890,6 +919,7 @@ def migrate():
         ("verify_code_hash", "VARCHAR(64)"),
         ("verify_code_expires", "TIMESTAMP"),
         ("verify_code_tries", "INTEGER NOT NULL DEFAULT 0"),
+        ("verify_code_window", "INTEGER"),
     ]
     for name, ddl in new_cols:
         if name in cols:
