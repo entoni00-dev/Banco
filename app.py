@@ -11,7 +11,7 @@ import secrets
 import urllib.request
 from datetime import datetime, timedelta
 from functools import wraps
-from html import escape
+from markupsafe import Markup, escape
 
 from flask import (Flask, abort, flash, redirect, render_template, request,
                    session, url_for)
@@ -319,6 +319,12 @@ def send_email(to, subject, html):
 
 
 def email_layout(title, text, button_label=None, button_url=None):
+    """Nome, materia ecc. arrivano dagli utenti: vanno sempre escapati, altrimenti si può
+    iniettare HTML (link, immagini) in un'email che parte dal nostro mittente.
+    Per HTML nostro passare un Markup."""
+    title, text = escape(title), escape(text)
+    if button_url:
+        button_label, button_url = escape(button_label), escape(button_url)
     btn = ""
     if button_url:
         btn = ('<p><a href="%s" style="background:#e8b84b;color:#1c241e;padding:12px 18px;'
@@ -357,14 +363,13 @@ def send_verification(user):
     user.verify_code_expires = datetime.utcnow() + timedelta(minutes=CODE_TTL_MIN)
     user.verify_code_tries = 0
     db.session.commit()
-    big = ('<span style="display:block;font-size:34px;letter-spacing:8px;font-weight:700;'
-           'color:#1f3b2c;margin:14px 0">%s</span>' % code)
-    send_email(user.email, "Il tuo codice Banco: %s" % code, email_layout(
-        "Il tuo codice di conferma",
-        "Ciao %s, inserisci questo codice su Banco per confermare che l'email è tua:%s"
-        "Vale %d minuti. Finché non lo inserisci non puoi pubblicare richieste né contattare "
-        "altri studenti. Se non ti sei registrato tu su Banco, ignora questa email e non "
-        "comunicare il codice a nessuno." % (escape(user.name), big, CODE_TTL_MIN)))
+    big = Markup('<span style="display:block;font-size:34px;letter-spacing:8px;font-weight:700;'
+                 'color:#1f3b2c;margin:14px 0">%s</span>') % code
+    text = Markup("Ciao %s, inserisci questo codice su Banco per confermare che l'email è tua:%s"
+                  "Vale %d minuti. Finché non lo inserisci non puoi pubblicare richieste né contattare "
+                  "altri studenti. Se non ti sei registrato tu su Banco, ignora questa email e non "
+                  "comunicare il codice a nessuno.") % (user.name, big, CODE_TTL_MIN)
+    send_email(user.email, "Il tuo codice Banco: %s" % code, email_layout("Il tuo codice di conferma", text))
 
 
 def active_university():
@@ -773,6 +778,8 @@ def send_contact(req_id):
     study = db.session.get(StudyRequest, req_id) or abort(404)
     if study.user_id == me.id or not study.active:
         abort(400)
+    if me.is_demo != study.user.is_demo:     # profili demo e utenti veri restano separati
+        abort(400)
     existing = ContactRequest.query.filter_by(sender_id=me.id, study_request_id=req_id).first()
     if existing:
         flash("Hai già inviato una richiesta per questo annuncio.", "error")
@@ -849,6 +856,23 @@ def profile():
 
 
 # ---------------------------------------------------------------- errori
+@app.after_request
+def security_headers(resp):
+    resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+    resp.headers.setdefault("X-Frame-Options", "DENY")
+    resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+    resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+    # script inline: solo l'onchange del selettore corso (_degree.html); font da Google Fonts
+    resp.headers.setdefault("Content-Security-Policy",
+        "default-src 'self'; script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; img-src 'self' data:; "
+        "frame-ancestors 'none'; form-action 'self'; base-uri 'self'")
+    if IS_PROD:
+        resp.headers.setdefault("Strict-Transport-Security", "max-age=15552000")
+    return resp
+
+
 @app.errorhandler(403)
 @app.errorhandler(404)
 @app.errorhandler(400)
